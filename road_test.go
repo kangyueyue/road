@@ -10,5 +10,6 @@ func TestRoad(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	t.Log(cfg)
+	host := cfg.viper.Get("mysql.host")
+	t.Logf("mysql host:%s",host)
 }

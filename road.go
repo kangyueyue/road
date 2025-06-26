@@ -23,11 +23,16 @@ type Road struct {
 
 // Config nacos配置
 type Config struct {
-	cacheDir    string       `toml:cacheDir`
-	DataId      string       `toml:"data_id"`
-	Group       string       `toml:"group"`
+	BaseConfig  *BaseConfig  `toml:"base_config"`  // 基础配置
 	NacosServer *NacosServer `toml:"nacos_server"` // nacos服务端配置
 	NacosClient *NacosClient `toml:"nacos_client"` // nacos客户端配置
+}
+
+// BaseConfig 基础配置
+type BaseConfig struct {
+	CacheDir string `toml:cache_dir`
+	DataId   string `toml:"data_id"`
+	Group    string `toml:"group"`
 }
 
 // NacosServer nacos服务端配置
@@ -47,9 +52,32 @@ type NacosClient struct {
 	LogLevel            string `toml:"log_level"`
 }
 
+// DefaultConfig 默认配置
+func DefaultConfig() *Config{
+	DefaultBaseConfig := &BaseConfig{
+		CacheDir: "tmp/nacos/config",
+	}
+	DefaultNacosServer := &NacosServer{
+		Scheme: "http",
+	}
+	DefaultNacosClient := &NacosClient{
+		TimeoutMs:           5000,
+		NotLoadCacheAtStart: false,
+		LogDir:              "tmp/nacos/log",
+		CacheDir:            "tmp/nacos/cache",
+		LogLevel:            "debug",
+	}
+	DefaultConfig := &Config{
+		BaseConfig:  DefaultBaseConfig,
+		NacosServer: DefaultNacosServer,
+		NacosClient: DefaultNacosClient,
+	}
+	return DefaultConfig
+}
+
 // NewConfigByFile 通过文件初始化config
 func NewConfigByFile(f string) (c *Config, err error) {
-	cf := &Config{}
+	cf := DefaultConfig()
 	if _, err := toml.DecodeFile(f, cf); err != nil {
 		return nil, err
 	}
@@ -105,8 +133,8 @@ func (r *Road) watch() {
 	)
 	// 从nacos读取配置
 	content, err = r.nacosClient.GetConfig(vo.ConfigParam{
-		DataId: r.cfg.DataId,
-		Group:  r.cfg.Group,
+		DataId: r.cfg.BaseConfig.DataId,
+		Group:  r.cfg.BaseConfig.Group,
 	})
 	if err != nil {
 		logrus.Fatalf("读取配置文件失败: %v", err)
@@ -122,8 +150,8 @@ func (r *Road) watch() {
 	}
 	// 监听
 	err = r.nacosClient.ListenConfig(vo.ConfigParam{
-		DataId: r.cfg.DataId,
-		Group:  r.cfg.Group,
+		DataId: r.cfg.BaseConfig.DataId,
+		Group:  r.cfg.BaseConfig.Group,
 		OnChange: func(namespace, group, dataId, data string) {
 			logrus.Info("检测到配置变更，重新加载配置")
 			// 重新加载配置
@@ -144,14 +172,14 @@ func (r *Road) watch() {
 
 // createConfigCache 创建配置缓存
 func (r *Road) createConfigCache(content string) {
-	cacheDir := r.cfg.cacheDir
+	cacheDir := r.cfg.BaseConfig.CacheDir
 	// 判断是否存在，不存在创建
 	if _, err := os.Stat(cacheDir); os.IsNotExist(err) {
 		if err = os.MkdirAll(cacheDir, 0755); err != nil {
 			return
 		}
 	}
-	cacheFile := filepath.Join(cacheDir, r.cfg.DataId)
+	cacheFile := filepath.Join(cacheDir, r.cfg.BaseConfig.DataId)
 	if err := os.WriteFile(cacheFile, []byte(content), 0644); err != nil {
 		return
 	}
