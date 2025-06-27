@@ -29,9 +29,10 @@ type Config struct {
 
 // BaseConfig 基础配置
 type BaseConfig struct {
-	CacheDir string `toml:cache_dir`
-	DataId   string `toml:"data_id"`
+	CacheDir string `toml:"cache_dir"`
+	PageSize int    `toml:"page_size"`
 	Group    string `toml:"group"`
+	Search   string `toml:"search"`
 }
 
 // NacosServer nacos服务端配置
@@ -55,6 +56,8 @@ type NacosClient struct {
 func DefaultConfig() *Config {
 	DefaultBaseConfig := &BaseConfig{
 		CacheDir: "tmp/nacos/config",
+		Search:   "accurate",
+		PageSize: 10,
 	}
 	DefaultNacosServer := &NacosServer{
 		Scheme: "http",
@@ -108,8 +111,8 @@ func NewNacosClient(cfg Config) (config_client.IConfigClient, error) {
 	return clients.NewConfigClient(param)
 }
 
-// NewcRoad 初始化配置
-func NewcRoad(viper *viper.Viper, cfg *Config) (*Road, error) {
+// NewRoad 初始化配置
+func NewRoad(viper *viper.Viper, cfg *Config) (*Road, error) {
 	client, err := NewNacosClient(*cfg)
 	if err != nil {
 		return nil, err
@@ -130,40 +133,74 @@ func (r *Road) watch() {
 		err     error
 		content string
 	)
-	// 从nacos读取配置
-	content, err = r.nacosClient.GetConfig(vo.ConfigParam{
-		DataId: r.cfg.BaseConfig.DataId,
-		Group:  r.cfg.BaseConfig.Group,
-	})
-	if err != nil {
-		logrus.Fatalf("读取配置文件失败: %v", err)
-		panic(err)
+	// 从nacos得到所有dataId
+	dataIds := r.getDataIds()
+	for _, dataId := range dataIds {
+		content, err = r.nacosClient.GetConfig(vo.ConfigParam{
+			DataId: dataId,
+			Group:  r.cfg.BaseConfig.Group,
+		})
+		if err != nil {
+			logrus.Fatalf("读取配置文件失败: %v", err)
+			panic(err)
+		}
+		// 写入到本地，缓存配置
+		r.createConfigCache(dataId, content)
+		// 存入viper
+		r.viper.Set(dataId, content)
+		// 监听
+		err = r.Listen(dataId)
+		if err != nil {
+			logrus.Warnf("配置监听设置失败: %v", err)
+		}
 	}
-	// 写入到本地，缓存配置
-	r.createConfigCache(content)
+}
 
-	r.viper.Set(r.cfg.BaseConfig.DataId, content)
-	// 监听
-	err = r.nacosClient.ListenConfig(vo.ConfigParam{
-		DataId: r.cfg.BaseConfig.DataId,
+// Listen 监听配置变更
+func (r *Road) Listen(dataId string) error {
+	err := r.nacosClient.ListenConfig(vo.ConfigParam{
+		DataId: dataId,
 		Group:  r.cfg.BaseConfig.Group,
 		OnChange: func(namespace, group, dataId, data string) {
 			logrus.Info("检测到配置变更，重新加载配置")
 			// 重新加载配置
-			r.viper.Set(r.cfg.BaseConfig.DataId, content)
+			r.viper.Set(dataId, data)
 			// 写入到本地，缓存配置
-			r.createConfigCache(data) // 可以在这里添加配置变更后的处理逻辑
+			r.createConfigCache(dataId, data) // 可以在这里添加配置变更后的处理逻辑
 			logrus.Info("配置重新加载成功")
 		},
 	})
+	return err
+}
 
-	if err != nil {
-		logrus.Warnf("配置监听设置失败: %v", err)
+// getDataIds 获取所有dataId
+func (r *Road) getDataIds() []string {
+	var dataIds []string
+	for pageNo := 1; ; pageNo++ {
+		param := vo.SearchConfigParam{
+			Group:    r.cfg.BaseConfig.Group,
+			Search:   r.cfg.BaseConfig.Search,
+			PageSize: r.cfg.BaseConfig.PageSize,
+			PageNo:   pageNo,
+		}
+		configs, err := r.nacosClient.SearchConfig(param)
+		if err != nil {
+			logrus.Fatalf("读取配置文件失败: %v", err)
+			panic(err)
+		}
+		for _, config := range configs.PageItems {
+			dataIds = append(dataIds, config.DataId)
+		}
+		// break
+		if pageNo*r.cfg.BaseConfig.PageSize >= configs.TotalCount {
+			break
+		}
 	}
+	return dataIds
 }
 
 // createConfigCache 创建配置缓存
-func (r *Road) createConfigCache(content string) {
+func (r *Road) createConfigCache(dataId, content string) {
 	cacheDir := r.cfg.BaseConfig.CacheDir
 	// 判断是否存在，不存在创建
 	if _, err := os.Stat(cacheDir); os.IsNotExist(err) {
@@ -171,7 +208,7 @@ func (r *Road) createConfigCache(content string) {
 			return
 		}
 	}
-	cacheFile := filepath.Join(cacheDir, r.cfg.BaseConfig.DataId)
+	cacheFile := filepath.Join(cacheDir, dataId)
 	if err := os.WriteFile(cacheFile, []byte(content), 0644); err != nil {
 		return
 	}

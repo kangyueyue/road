@@ -12,7 +12,7 @@ func InitRoad(f string) (*Road, error) {
 	if err != nil {
 		return nil, fmt.Errorf("NewConfig:%w", err)
 	}
-	cfg, err := NewcRoad(viper.GetViper(), r)
+	cfg, err := NewRoad(viper.GetViper(), r)
 	if err != nil {
 		return nil, fmt.Errorf("NewRoad err:%+v", err)
 	}

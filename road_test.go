@@ -11,6 +11,8 @@ func TestRoad(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	host := viper.Get("config.conf")
-	t.Logf("conf:%+v", host)
+	v1 := viper.Get("config.conf")
+	v2 := viper.Get("config.yaml")
+	t.Logf("conf:%+v", v1)
+	t.Logf("conf:%+v", v2)
 }
