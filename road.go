@@ -53,7 +53,7 @@ type NacosClient struct {
 }
 
 // DefaultConfig 默认配置
-func DefaultConfig() *Config{
+func DefaultConfig() *Config {
 	DefaultBaseConfig := &BaseConfig{
 		CacheDir: "tmp/nacos/config",
 	}
@@ -143,7 +143,7 @@ func (r *Road) watch() {
 	// 写入到本地，缓存配置
 	r.createConfigCache(content)
 
-	r.viper.SetConfigType("yml")
+	r.viper.SetConfigType("toml")
 	if err = r.viper.ReadConfig(bytes.NewBuffer([]byte(content))); err != nil {
 		logrus.Fatalf("读取配置文件失败: %v", err)
 		panic(err)
