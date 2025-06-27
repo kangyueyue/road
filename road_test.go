@@ -1,15 +1,16 @@
 package road
 
 import (
+	"github.com/spf13/viper"
 	"testing"
 )
 
 // TestRoad
 func TestRoad(t *testing.T) {
-	cfg, err := InitRoad("./test.conf")
+	_, err := InitRoad("./test.conf")
 	if err != nil {
 		t.Error(err)
 	}
-	host := cfg.viper.Get("mysql.host")
-	t.Logf("mysql host:%s",host)
+	host := viper.Get("config.conf")
+	t.Logf("conf:%+v", host)
 }

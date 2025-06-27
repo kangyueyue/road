@@ -1,7 +1,6 @@
 package road
 
 import (
-	"bytes"
 	"os"
 	"path/filepath"
 
@@ -143,11 +142,7 @@ func (r *Road) watch() {
 	// 写入到本地，缓存配置
 	r.createConfigCache(content)
 
-	r.viper.SetConfigType("toml")
-	if err = r.viper.ReadConfig(bytes.NewBuffer([]byte(content))); err != nil {
-		logrus.Fatalf("读取配置文件失败: %v", err)
-		panic(err)
-	}
+	r.viper.Set(r.cfg.BaseConfig.DataId, content)
 	// 监听
 	err = r.nacosClient.ListenConfig(vo.ConfigParam{
 		DataId: r.cfg.BaseConfig.DataId,
@@ -155,12 +150,9 @@ func (r *Road) watch() {
 		OnChange: func(namespace, group, dataId, data string) {
 			logrus.Info("检测到配置变更，重新加载配置")
 			// 重新加载配置
-			if err = r.viper.ReadConfig(bytes.NewBuffer([]byte(data))); err != nil {
-				logrus.Errorf("重新加载配置失败: %v", err)
-				return
-			}
+			r.viper.Set(r.cfg.BaseConfig.DataId, content)
 			// 写入到本地，缓存配置
-			r.createConfigCache(content) // 可以在这里添加配置变更后的处理逻辑
+			r.createConfigCache(data) // 可以在这里添加配置变更后的处理逻辑
 			logrus.Info("配置重新加载成功")
 		},
 	})
